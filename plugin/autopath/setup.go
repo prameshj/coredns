@@ -1,15 +1,22 @@
 package autopath
 
 import (
+	"encoding/hex"
 	"fmt"
 
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/metrics"
 
+	clog "github.com/coredns/coredns/plugin/pkg/log"
+	"github.com/coredns/coredns/request"
 	"github.com/mholt/caddy"
 	"github.com/miekg/dns"
+
+	"strings"
 )
+
+var log = clog.NewWithPlugin("autopath")
 
 func init() {
 	caddy.RegisterPlugin("autopath", caddy.Plugin{
@@ -32,6 +39,9 @@ func setup(c *caddy.Controller) error {
 
 	// Do this in OnStartup, so all plugin has been initialized.
 	c.OnStartup(func() error {
+		if mw == "fromedns" {
+			ap.searchFunc = fromEdns
+		}
 		m := dnsserver.GetConfig(c).Handler(mw)
 		if m == nil {
 			return nil
@@ -49,6 +59,26 @@ func setup(c *caddy.Controller) error {
 		return ap
 	})
 
+	return nil
+}
+
+func fromEdns(state request.Request) []string {
+	opt := state.Req.IsEdns0()
+	if opt == nil {
+		return nil
+	}
+	for _, o := range opt.Option {
+		if o.Option() == 0xfffe {
+			// option string is of the form "65534:0xa4563.."
+			decoded, err := hex.DecodeString(strings.TrimPrefix(o.String(), "65534:0x"))
+			if err != nil {
+				log.Errorf("Failed to decode searchpath %s - %s", o.String(), err)
+				return nil
+			}
+			log.Warningf("Searchpath is %s", decoded)
+			return strings.Split(string(decoded), ",")
+		}
+	}
 	return nil
 }
 

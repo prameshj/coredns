@@ -107,6 +107,7 @@ func (a *AutoPath) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Ms
 	for i, s := range searchpath {
 		newQName := base + "." + s
 		ar.Question[0].Name = newQName
+		log.Warningf("searchpath expansion for  - %s, %s", state.Name(), newQName)
 		nw := nonwriter.New(w)
 
 		rcode, err := plugin.NextOrFailure(a.Name(), a.Next, ctx, nw, ar)
